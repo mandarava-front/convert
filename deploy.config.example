@@ -1,0 +1,49 @@
+# ================================
+# MP3 转换服务部署配置示例
+# ================================
+# 
+# 使用方法：
+# 1. 复制此文件: cp deploy.config.example deploy.config
+# 2. 修改配置参数
+# 3. 在 deploy.sh 中加载配置: source deploy.config
+
+# 🔧 服务器连接配置
+SERVER_IP="192.168.1.100"               # 服务器 IP 地址
+SERVER_USER="root"                       # SSH 用户名
+SERVER_PASSWORD=""                       # SSH 密码（留空使用密钥认证）
+SERVER_PORT="22"                         # SSH 端口
+
+# 📁 目录配置
+TARGET_DIR="/opt/mp3-converter"          # 服务器目标目录
+LOG_DIR="${TARGET_DIR}/logs"             # 日志目录
+
+# 🚀 服务配置
+SERVICE_NAME="mp3-converter"             # 服务名称
+SERVICE_PORT="8000"                      # 服务端口
+WORKERS="1"                              # 工作进程数
+
+# 🔒 安全配置
+SERVICE_USER="root"                      # 运行服务的用户
+SERVICE_GROUP="root"                     # 运行服务的用户组
+
+# 📦 部署选项
+BACKUP_OLD_VERSION="true"                # 是否备份旧版本
+RESTART_AFTER_DEPLOY="true"              # 部署后是否自动重启
+ENABLE_AUTO_START="true"                 # 是否启用开机自启
+
+# 🗂️ 排除文件（rsync 排除模式）
+EXCLUDE_PATTERNS=(
+    "__pycache__"
+    "*.pyc"
+    "*.pyo"
+    ".git"
+    ".gitignore"
+    "uploads/"
+    "midis/"
+    "wavs/"
+    "logs/"
+    "deploy.sh"
+    "deploy.config*"
+    "项目结构.md"
+    "*.log"
+) 

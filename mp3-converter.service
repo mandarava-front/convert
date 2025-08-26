@@ -1,0 +1,43 @@
+[Unit]
+Description=MP3 Converter Service
+Documentation=https://github.com/your-repo/mp3-converter
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/home/mp3-converter
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH=/home/mp3-converter
+Environment=PYTHONUNBUFFERED=1
+
+# 启动命令
+ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+
+# 重启策略
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# 资源限制
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# 标准输出和错误重定向到日志（如需日志可取消注释并确保目录存在）
+# StandardOutput=append:/home/mp3-converter/logs/mp3-converter.log
+# StandardError=append:/home/mp3-converter/logs/mp3-converter.log
+
+# 安全设置（如需沙箱功能可后续再加）
+# NoNewPrivileges=yes
+# PrivateTmp=yes
+# ProtectSystem=strict
+# ReadWritePaths=/home/mp3-converter
+
+# 健康检查（可选）
+# WatchdogSec=30
+
+[Install]
+WantedBy=multi-user.target 
