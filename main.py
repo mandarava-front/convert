@@ -184,7 +184,7 @@ async def root():
         "endpoints": {
             "convert_to_midi": "/convert",
             "convert_to_wav": "/convert/wav",
-            "video_first_frame": "/video/first-frame"
+            "video_first_frame": "/convert/video/first-frame/json"
         }
     }
 
@@ -318,46 +318,7 @@ async def convert_mp3_to_wav_endpoint(
         )
 
 
-@app.post("/video/first-frame")
-async def video_first_frame(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    url: Optional[str] = Form(None)
-):
-    """
-    接收表单字段 url（视频地址），提取视频首帧并直接返回图片文件。
-    """
-    if not url:
-        raise HTTPException(status_code=400, detail="请提供视频 URL")
-
-    video_filepath = None
-    try:
-        video_filepath = await download_file_from_url(url)
-        frame_filename = await extract_first_frame(video_filepath)
-        frame_path = os.path.join("frames", frame_filename)
-        # 下载完成后清理源视频
-        cleanup_file(video_filepath)
-        video_filepath = None
-
-        # 响应完成后清理生成的帧文件，避免占用磁盘
-        background_tasks.add_task(cleanup_file, frame_path)
-        return FileResponse(
-            frame_path,
-            media_type="image/png",
-            filename=frame_filename,
-            background=background_tasks,
-        )
-    except HTTPException:
-        if video_filepath:
-            cleanup_file(video_filepath)
-        raise
-    except Exception as e:
-        if video_filepath:
-            cleanup_file(video_filepath)
-        raise HTTPException(status_code=500, detail=f"提取首帧失败: {str(e)}")
-
-
-@app.post("/video/first-frame/json")
+@app.post("/convert/video/first-frame/json")
 async def video_first_frame_json(request: Request, background_tasks: BackgroundTasks):
     """
     接收 JSON: {"url": "..."}，提取视频首帧并返回图片文件。
@@ -367,17 +328,31 @@ async def video_first_frame_json(request: Request, background_tasks: BackgroundT
     except Exception:
         data = {}
     url = (data or {}).get("url")
+    width = data.get("width") if isinstance(data.get("width"), int) else None
+    height = data.get("height") if isinstance(data.get("height"), int) else None
+    image_format = data.get("format") if isinstance(data.get("format"), str) else "png"
+    quality = data.get("quality") if isinstance(data.get("quality"), int) else None
+    sws_flags = data.get("sws_flags") if isinstance(data.get("sws_flags"), str) else None
     if not url:
         raise HTTPException(status_code=400, detail="请提供视频 URL")
 
     video_filepath = None
+    frame_path = None
     try:
         video_filepath = await download_file_from_url(url)
-        frame_filename = await extract_first_frame(video_filepath)
+        frame_filename = await extract_first_frame(
+            video_filepath,
+            width=width,
+            height=height,
+            image_format=image_format,
+            quality=quality,
+            sws_flags=sws_flags,
+        )
         frame_path = os.path.join("frames", frame_filename)
         cleanup_file(video_filepath)
         video_filepath = None
 
+        # 响应完成后清理生成的帧文件
         background_tasks.add_task(cleanup_file, frame_path)
         return FileResponse(
             frame_path,
@@ -388,10 +363,14 @@ async def video_first_frame_json(request: Request, background_tasks: BackgroundT
     except HTTPException:
         if video_filepath:
             cleanup_file(video_filepath)
+        if frame_path:
+            cleanup_file(frame_path)
         raise
     except Exception as e:
         if video_filepath:
             cleanup_file(video_filepath)
+        if frame_path:
+            cleanup_file(frame_path)
         raise HTTPException(status_code=500, detail=f"提取首帧失败: {str(e)}")
 
 # 支持 JSON 格式的 URL 请求

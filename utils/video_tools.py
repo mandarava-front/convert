@@ -12,7 +12,14 @@ import subprocess
 from typing import Optional
 
 
-async def extract_first_frame(video_filepath: str) -> str:
+async def extract_first_frame(
+    video_filepath: str,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    image_format: str = "png",
+    quality: Optional[int] = None,
+    sws_flags: Optional[str] = None,
+) -> str:
     """
     提取视频文件的首帧为 PNG 图片，返回生成的文件名（不含路径）。
 
@@ -31,7 +38,12 @@ async def extract_first_frame(video_filepath: str) -> str:
 
     # 生成唯一文件名
     file_id = str(uuid.uuid4())
-    output_filename = f"{file_id}.png"
+    fmt = image_format.lower()
+    if fmt == "jpeg":
+        fmt = "jpg"
+    if fmt not in {"png", "jpg"}:
+        fmt = "png"
+    output_filename = f"{file_id}.{fmt}"
     output_path = os.path.join(output_dir, output_filename)
 
     # 在后台线程中执行阻塞的子进程调用
@@ -49,7 +61,16 @@ async def extract_first_frame(video_filepath: str) -> str:
     return output_filename
 
 
-def _run_ffmpeg_extract_first_frame(input_path: str, output_path: str) -> None:
+def _run_ffmpeg_extract_first_frame(
+    input_path: str,
+    output_path: str,
+    *,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    image_format: str = "png",
+    quality: Optional[int] = None,
+    sws_flags: Optional[str] = None,
+) -> None:
     """
     同步执行 ffmpeg 提取首帧：
     ffmpeg -y -ss 0 -i input -frames:v 1 -q:v 2 output.png
@@ -68,10 +89,33 @@ def _run_ffmpeg_extract_first_frame(input_path: str, output_path: str) -> None:
         input_path,
         "-frames:v",
         "1",
-        "-q:v",
-        "2",
-        output_path,
     ]
+
+    # 处理缩放
+    scale_filter = None
+    if width or height:
+        # -1 表示按比例自适应
+        w = width if (isinstance(width, int) and width > 0) else -1
+        h = height if (isinstance(height, int) and height > 0) else -1
+        scale_filter = f"scale={w}:{h}"
+        cmd.extend(["-vf", scale_filter])
+        if sws_flags:
+            cmd.extend(["-sws_flags", sws_flags])
+
+    # 格式与质量
+    fmt = image_format.lower()
+    if fmt == "jpeg":
+        fmt = "jpg"
+    if fmt == "jpg":
+        # 2(高质量)-31(低质量)
+        q = quality if (isinstance(quality, int) and 2 <= quality <= 31) else 2
+        cmd.extend(["-q:v", str(q)])
+    elif fmt == "png":
+        # 最高“清晰度”采用无压缩（仅影响体积与编码时间，不损失质量）
+        # 强制 24 位色彩避免调色板/低位深
+        cmd.extend(["-compression_level", "0", "-pix_fmt", "rgb24"])
+
+    cmd.append(output_path)
 
     try:
         completed = subprocess.run(
