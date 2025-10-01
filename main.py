@@ -19,7 +19,7 @@ import logging
 
 from utils.convert import mp3_to_midi
 from utils.audio_tools import mp3_to_wav
-from utils.video_tools import extract_first_frame
+from utils.video_tools import extract_first_frame, extract_last_frame
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -184,7 +184,8 @@ async def root():
         "endpoints": {
             "convert_to_midi": "/convert",
             "convert_to_wav": "/convert/wav",
-            "video_first_frame": "/convert/video/first-frame/json"
+            "video_first_frame": "/convert/video/first-frame/json",
+            "video_last_frame": "/convert/video/last-frame/json"
         }
     }
 
@@ -372,6 +373,62 @@ async def video_first_frame_json(request: Request, background_tasks: BackgroundT
         if frame_path:
             cleanup_file(frame_path)
         raise HTTPException(status_code=500, detail=f"提取首帧失败: {str(e)}")
+
+
+@app.post("/convert/video/last-frame/json")
+async def video_last_frame_json(request: Request, background_tasks: BackgroundTasks):
+    """
+    接收 JSON: {"url": "..."}，提取视频尾帧并返回图片文件。
+    参数与首帧接口一致：width、height、format(jpg/png)、quality、sws_flags。
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    url = (data or {}).get("url")
+    width = data.get("width") if isinstance(data.get("width"), int) else None
+    height = data.get("height") if isinstance(data.get("height"), int) else None
+    image_format = data.get("format") if isinstance(data.get("format"), str) else "png"
+    quality = data.get("quality") if isinstance(data.get("quality"), int) else None
+    sws_flags = data.get("sws_flags") if isinstance(data.get("sws_flags"), str) else None
+    if not url:
+        raise HTTPException(status_code=400, detail="请提供视频 URL")
+
+    video_filepath = None
+    frame_path = None
+    try:
+        video_filepath = await download_file_from_url(url)
+        frame_filename = await extract_last_frame(
+            video_filepath,
+            width=width,
+            height=height,
+            image_format=image_format,
+            quality=quality,
+            sws_flags=sws_flags,
+        )
+        frame_path = os.path.join("frames", frame_filename)
+        cleanup_file(video_filepath)
+        video_filepath = None
+
+        background_tasks.add_task(cleanup_file, frame_path)
+        return FileResponse(
+            frame_path,
+            media_type="image/png",
+            filename=frame_filename,
+            background=background_tasks,
+        )
+    except HTTPException:
+        if video_filepath:
+            cleanup_file(video_filepath)
+        if frame_path:
+            cleanup_file(frame_path)
+        raise
+    except Exception as e:
+        if video_filepath:
+            cleanup_file(video_filepath)
+        if frame_path:
+            cleanup_file(frame_path)
+        raise HTTPException(status_code=500, detail=f"提取尾帧失败: {str(e)}")
 
 # 支持 JSON 格式的 URL 请求
 @app.post("/convert/json", response_model=ConvertResponse)
